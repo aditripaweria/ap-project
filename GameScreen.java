@@ -8,14 +8,12 @@ import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.scene.Node;
 import javafx.scene.Scene;
-import javafx.scene.control.Label;
+import javafx.scene.control.Button;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.StackPane;
-import javafx.scene.paint.Color;
-import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
@@ -24,28 +22,27 @@ import java.util.List;
 import java.util.Random;
 
 public class GameScreen {
+
     private final Stage primaryStage;
     private final String characterImagePath;
     private Pane gamePane;
     private ImageView characterView;
-
     private ImageView oneImageView;
     private double stickHeight;
-
-    private boolean isMovingRight;
+    private boolean characterStatus;
     private List<ImageView> sticks = new ArrayList<>();
-
     private ObjectProperty<Timeline> stickUserData = new SimpleObjectProperty<>();
-
+    private boolean stickVisible;
     private int gemCount;
+    private boolean isGameOver;
+    private ImageView stick;
 
-    private boolean isOverGap = false;
-    private boolean isGameOver = false;
-
+    private boolean isPaused=false;
     public GameScreen(Stage primaryStage, String characterImagePath) {
-        isMovingRight = false;
+        stickVisible = false;
         this.primaryStage = primaryStage;
         this.characterImagePath = characterImagePath;
+        isGameOver = false;
     }
 
     public void show() {
@@ -82,60 +79,88 @@ public class GameScreen {
         gamePane.getChildren().addAll(pillars);
         gamePane.getChildren().add(characterView);
 
-        Label gemCountLabel = new Label("Gems Collected: 0");
+        // Add a label to display gem count
+        javafx.scene.control.Label gemCountLabel = new javafx.scene.control.Label("Gems Collected: 0");
         gemCountLabel.setStyle("-fx-text-fill: white");
 
-        Rectangle scoreBox = new Rectangle(120, 40);
-        scoreBox.setFill(Color.BLACK);
-        scoreBox.setArcWidth(10);
-        scoreBox.setArcHeight(10);
-
-        Label scoreLabel = new Label("Score: 0");
-        scoreLabel.setStyle("-fx-text-fill: white");
-
+        // Create a box to display gem count at the center top
         javafx.scene.layout.HBox gemCountBox = new javafx.scene.layout.HBox();
         gemCountBox.setAlignment(javafx.geometry.Pos.TOP_CENTER);
-        gemCountBox.setStyle("-fx-padding: 10px;");
+        gemCountBox.setStyle("-fx-background-color: rgba(0, 0, 0, 0.5); -fx-padding: 10px;");
 
-        gemCountBox.getChildren().addAll(scoreBox, new Label("  "), scoreLabel);
-
+        gemCountBox.getChildren().add(gemCountLabel);
         root.getChildren().add(gemCountBox);
 
-        Timeline characterMoveTimeline = new Timeline(
-                new KeyFrame(Duration.millis(16), event -> {
-                    if (isMovingRight && !isGameOver) {
-                        moveCharacter(5);
-                    }
-                })
-        );
-        characterMoveTimeline.setCycleCount(Timeline.INDEFINITE);
-        characterMoveTimeline.play();
-
         scene.setOnKeyPressed(event -> {
-            if (event.getCode() == KeyCode.W && !isGameOver) {
-                stickHeight = stickHeight + 10;
-                createStick(200, 500, stickHeight);
-            } else if (event.getCode() == KeyCode.RIGHT && !isGameOver) {
-                isMovingRight = true;
+            if (event.getCode() == KeyCode.LEFT) {
+                moveCharacter(-10);
+            } else if (event.getCode() == KeyCode.RIGHT) {
+                moveCharacter(10);
+            } else if (event.getCode() == KeyCode.W) {
+                createStick();
+            } else if (event.getCode() == KeyCode.A) {
+                fallDown();
+            } else if (event.getCode() == KeyCode.T) {
+                stopGameAndDisplayMessage("Game Over. Press 'Play Again' to restart.");
+            }
+            else if (event.getCode() == KeyCode.P && !isGameOver && !isPaused) {
+                // Pause the game
+                pauseGame();
+            } else if (event.getCode() == KeyCode.R && isPaused) {
+                // Resume the game
+                resumeGame();
+            } else if (event.getCode() == KeyCode.N && isPaused) {
+                // Start a new game
+                resetGame();
             }
         });
 
         scene.setOnKeyReleased(event -> {
-            if (event.getCode() == KeyCode.W && !isGameOver) {
-                stickRotate();
-            } else if (event.getCode() == KeyCode.RIGHT && !isGameOver) {
-                isMovingRight = false;
+            if (event.getCode() == KeyCode.W) {
+                stopStickGrowth();
             }
         });
 
+        // Add a timeline to check for crossed gems periodically
         Timeline gemCheckTimeline = new Timeline(
-                new KeyFrame(Duration.seconds(1), event -> checkCharacterOnStickAndGems(gemCountLabel, scoreLabel))
+                new KeyFrame(Duration.seconds(1), event -> checkCharacterOnStickAndGems(gemCountLabel))
         );
         gemCheckTimeline.setCycleCount(Timeline.INDEFINITE);
         gemCheckTimeline.play();
 
         primaryStage.setScene(scene);
         primaryStage.show();
+    }
+    public void pauseGame() {
+        isPaused = true;
+
+        // Add UI elements or overlay indicating the game is paused
+        // ...
+
+        // Add UI elements for resuming and restarting
+        Button resumeButton = new Button("Resume");
+        resumeButton.setOnAction(event -> resumeGame());
+        resumeButton.setLayoutX(primaryStage.getWidth() / 2 - 50);
+        resumeButton.setLayoutY(primaryStage.getHeight() / 2 - 30);
+
+        Button restartButton = new Button("Restart");
+        restartButton.setOnAction(event -> resetGame());
+        restartButton.setLayoutX(primaryStage.getWidth() / 2 - 50);
+        restartButton.setLayoutY(primaryStage.getHeight() / 2 + 30);
+
+        gamePane.getChildren().addAll(resumeButton, restartButton);
+    }
+
+    public void resumeGame() {
+        isPaused = false;
+
+        // Remove UI elements or overlay indicating the game is paused
+        // ...
+
+        // Remove UI elements for resuming and restarting
+        gamePane.getChildren().removeIf(node ->
+                node instanceof Button && ("Resume".equals(((Button) node).getText())
+                        || "Restart".equals(((Button) node).getText())));
     }
 
     private void moveCharacter(double deltaX) {
@@ -144,55 +169,33 @@ public class GameScreen {
         if (newX >= 0 && newX + characterView.getFitWidth() <= gamePane.getWidth()) {
             characterView.setTranslateX(newX);
 
-            if (newX + characterView.getFitWidth() >= gamePane.getWidth() / 2 && !isOverGap) {
-                checkCharacterOverGap();
-            }
-
+            // Check if character is reaching the right edge
             if (newX + characterView.getFitWidth() >= gamePane.getWidth()) {
+                // Transition to the left side and generate new pillars
                 transitionToNextSetOfPillars();
             }
-        } else if (!isGameOver) {
-            fallDown();
-        }
-    }
-
-    private void checkCharacterOverGap() {
-        boolean isStickUnderCharacter = false;
-        for (ImageView stick : sticks) {
-            if (characterView.getBoundsInParent().intersects(stick.getBoundsInParent())) {
-                isStickUnderCharacter = true;
-                break;
-            }
-        }
-
-        if (!isStickUnderCharacter) {
-            isOverGap = true;
-            fallDown();
         }
     }
 
     private void transitionToNextSetOfPillars() {
-        double transitionDistance = gamePane.getWidth() / 2;
+        double transitionDistance = gamePane.getWidth() /4;
 
+        // Move character and pillars simultaneously
         ParallelTransition parallelTransition = new ParallelTransition();
 
+        // Move character to the left side with a smooth transition
         TranslateTransition characterTransition = new TranslateTransition(Duration.seconds(2), characterView);
         characterTransition.setToX(characterView.getTranslateX() - transitionDistance);
         parallelTransition.getChildren().add(characterTransition);
 
+        // Move existing set of pillars to the left
         for (Node pillar : gamePane.getChildren()) {
             TranslateTransition pillarTransition = new TranslateTransition(Duration.seconds(2), pillar);
             pillarTransition.setToX(pillar.getTranslateX() - transitionDistance);
             parallelTransition.getChildren().add(pillarTransition);
         }
 
-        parallelTransition.setOnFinished(event -> {
-            if (!isGameOver) {
-                isOverGap = false;
-                eraseSticks();
-            }
-        });
-
+        // Play the parallel transition
         parallelTransition.play();
     }
 
@@ -209,25 +212,79 @@ public class GameScreen {
         oneImageView.setLayoutY(y);
     }
 
-    private void createStick(double x, double y, double stickHeight) {
-        double stickWidth = 10;
+    private void createStick() {
+        if (stick == null) {
+            double stickHeight = 10;
+            stick = new ImageView(new Image("/stick.png"));
+            stick.setFitWidth(characterView.getFitWidth() / 8); // One-fourth of character's width
+            stick.setFitHeight(stickHeight);
+            stick.setTranslateX(characterView.getTranslateX() + characterView.getFitWidth() / 2 - stick.getFitWidth() / 2);
+            stick.setTranslateY(characterView.getTranslateY() - stickHeight);
+            gamePane.getChildren().add(stick);
+            stick.setLayoutX(-900);
+            stick.setLayoutY(80);
 
-        if (oneImageView != null) {
-            gamePane.getChildren().remove(oneImageView);
+            // Use a Timeline for continuous growth
+            Timeline timeline = new Timeline(new KeyFrame(Duration.millis(100), event -> {
+                double newHeight = stick.getFitHeight() + 10; // Adjust the rate at which the stick grows
+                stick.setFitHeight(newHeight);
+                stick.setTranslateY(characterView.getTranslateY() - newHeight);
+            }));
+            timeline.setCycleCount(Timeline.INDEFINITE); // Repeat indefinitely
+            timeline.play();
+            stickUserData.set(timeline);
         }
+    }
 
-        oneImageView = new ImageView(new Image("/stick.png"));
-        oneImageView.setLayoutX(x);
-        oneImageView.setLayoutY(y - stickHeight);
-        oneImageView.setFitWidth(stickWidth);
-        oneImageView.setFitHeight(stickHeight);
+    private void stopStickGrowth() {
+        if (stick != null) {
+            // Stop further growth
+            Timeline timeline = stickUserData.get();
+            if (timeline != null) {
+                timeline.stop();
+            }
 
-        gamePane.getChildren().add(oneImageView);
-        sticks.add(oneImageView);
+            // Rotate the stick by 90 degrees
+            stick.setRotate(90);
 
-        if (!isGameOver) {
+            // Adjust stick position to stay within the screen
+            double stickX = characterView.getTranslateX() + characterView.getFitWidth();
+            double stickY = characterView.getTranslateY() + characterView.getFitHeight() / 2 - stick.getFitHeight() / 2;
+
+            double maxY = gamePane.getHeight() - stick.getFitHeight();
+
+
+            stick.setTranslateX(stickX);
+            stick.setTranslateY(Math.min(stickY, maxY));
+            stick.setLayoutY(80);
+            gamePane.getChildren().add(stick);
+
+            // Check if the character reaches the other side of the stick
             checkCharacterOnStick();
         }
+    }
+
+    private void checkCharacterOnStick() {
+        // Iterate through sticks and check if the character is on any of them
+        for (ImageView stick : sticks) {
+            if (characterView.getBoundsInParent().intersects(stick.getBoundsInParent())) {
+                // The character is on the stick
+                stopGameAndDisplayMessage("Game Over. Character on the stick. Press 'Play Again' to restart.");
+            }
+        }
+    }
+
+    private void stopGameAndDisplayMessage(String message) {
+        // Stop the game and display a message
+        isGameOver = true;
+
+        // Add any specific actions or logic here, such as showing a message or stopping animations
+
+        // Simulate falling animation for the character
+        TranslateTransition fallTransition = new TranslateTransition(Duration.seconds(1), characterView);
+        fallTransition.setToY(primaryStage.getHeight()); // Move character to the bottom of the screen
+        fallTransition.setOnFinished(event -> showPlayAgainButton());
+        fallTransition.play();
     }
 
     private void eraseSticks() {
@@ -240,12 +297,13 @@ public class GameScreen {
         }
     }
 
-    private void checkCharacterOnStickAndGems(Label gemCountLabel, Label scoreLabel) {
+    private void checkCharacterOnStickAndGems(javafx.scene.control.Label gemCountLabel) {
         checkCharacterOnStick();
-        checkGems(gemCountLabel, scoreLabel);
+        checkGems(gemCountLabel);
     }
 
-    private void checkGems(Label gemCountLabel, Label scoreLabel) {
+    private void checkGems(javafx.scene.control.Label gemCountLabel) {
+        // Check if character crossed a gem
         List<Node> gemsToRemove = new ArrayList<>();
         for (Node node : gamePane.getChildren()) {
             if (node instanceof ImageView && ((ImageView) node).getImage().getUrl().contains("gem.png")) {
@@ -256,72 +314,64 @@ public class GameScreen {
             }
         }
 
+        // Remove gems and update gem count label
         gamePane.getChildren().removeAll(gemsToRemove);
         gemCountLabel.setText("Gems Collected: " + gemCount);
-        scoreLabel.setText("Score: " + gemCount);
-    }
-
-    private void checkCharacterOnStick() {
-        for (ImageView stick : sticks) {
-            if (characterView.getBoundsInParent().intersects(stick.getBoundsInParent())) {
-                isOverGap = false;
-                eraseSticks();
-                return;
-            }
-        }
-
-        if (!isOverGap) {
-            fallDown();
-        }
     }
 
     private void fallDown() {
         if (!isGameOver) {
             isGameOver = true;
 
-            // Stop all animations
-            characterView.setRotate(0);
-            isMovingRight = false;
-            eraseSticks();
-            Timeline characterMoveTimeline = new Timeline();
-            characterMoveTimeline.stop();
+            // Stop the game
+            stopGameAndDisplayMessage("Game Over. Press 'Play Again' to restart.");
 
-            stopGameAndDisplayMessage("Game Over! Try Again.");
+            // Simulate falling animation for the character
+            TranslateTransition fallTransition = new TranslateTransition(Duration.seconds(1), characterView);
+            fallTransition.setToY(primaryStage.getHeight()); // Move character to the bottom of the screen
+            fallTransition.setOnFinished(event -> showPlayAgainButton());
+            fallTransition.play();
         }
     }
 
-    private void stopGameAndDisplayMessage(String message) {
-        // Add code to display the "Game Over" message
-        Label gameOverLabel = new Label(message);
-        gameOverLabel.setStyle("-fx-font-size: 24; -fx-text-fill: white;");
-        StackPane.setAlignment(gameOverLabel, javafx.geometry.Pos.CENTER);
-        StackPane root = (StackPane) primaryStage.getScene().getRoot();
-        root.getChildren().add(gameOverLabel);
+
+    private void showPlayAgainButton() {
+        // Add a play again button after the falling animation completes
+        Button playAgainButton = new Button("Play Again");
+        playAgainButton.setOnAction(event -> resetGame());
+        playAgainButton.setLayoutX(primaryStage.getWidth() / 2 - 50);
+        playAgainButton.setLayoutY(primaryStage.getHeight() / 2);
+
+        gamePane.getChildren().add(playAgainButton);
+    }
+
+    private void resetGame() {
+        isGameOver = false;
+
+        // Remove the play again button
+        gamePane.getChildren().clear();
+
+        // Reset game elements
+        sticks.clear();
+        gemCount = 0;
+
+        // Call the show method to start a new game
+        show();
     }
 
     private List<ImageView> createPillars(double sceneWidth, double sceneHeight) {
         List<ImageView> pillars = new ArrayList<>();
         Random rand = new Random();
 
-        double gapBetweenPillars = 3 * (rand.nextDouble() * 200 + 100);
+        double gapBetweenPillars = 3 * (rand.nextDouble() * 200 + 100); // Triple the gap between pillars
 
-        Image startPillarImage = new Image("/1.png");
-        ImageView startPillarView = new ImageView(startPillarImage);
-        double startPillarWidth = (rand.nextDouble() * 200 + 100) * 2;
-        double startPillarHeight = sceneHeight / 2;
-        startPillarView.setFitWidth(startPillarWidth);
-        startPillarView.setFitHeight(startPillarHeight);
-        startPillarView.setX(-50);
-        startPillarView.setY(sceneHeight / 2);
-        pillars.add(startPillarView);
-
-        for (int i = 1; i < 8; i++) {
+        for (int i = 0; i < 8; i++) {
             Image pillarImage = new Image("/" + (i + 1) + ".png");
             ImageView pillarView = new ImageView(pillarImage);
 
             double pillarWidth = (rand.nextDouble() * 200 + 100) * 2;
             double pillarHeight = sceneHeight / 2;
-            double pillarX = i * gapBetweenPillars;
+            double pillarX = i * gapBetweenPillars; // Adjust the pillarX to create spacing
             double pillarY = sceneHeight - pillarHeight;
 
             pillarView.setFitWidth(pillarWidth);
@@ -329,8 +379,41 @@ public class GameScreen {
             pillarView.setTranslateX(pillarX);
             pillarView.setTranslateY(pillarY);
 
+            // Insert a gem with a certain probability
+            if (rand.nextDouble() < 0.2) { // Adjust the probability as needed
+                Image gemImage = new Image("/gem.png"); // Change the path accordingly
+                ImageView gemView = new ImageView(gemImage);
+
+                // Set gem dimensions and position it within the pillar's height
+                double gemWidth = 30;
+                double gemHeight = 30;
+                double gemX = pillarX + (pillarWidth - gemWidth) / 2;
+                double gemY = pillarY - gemHeight - rand.nextDouble() * 100; // Adjust the height range
+
+                gemView.setFitWidth(gemWidth);
+                gemView.setFitHeight(gemHeight);
+                gemView.setTranslateX(gemX);
+                gemView.setTranslateY(gemY);
+
+                gamePane.getChildren().add(gemView);
+            }
+
             pillars.add(pillarView);
         }
+
+        Image pill1Image = new Image("/pill1.png"); // Change the path accordingly
+        ImageView pill1View = new ImageView(pill1Image);
+        double pill1Width = 400; // Adjust the width as needed
+        double pill1Height = 400; // Adjust the height as needed
+        double pill1X = sceneWidth - pill1Width; // Place at the extreme right
+        double pill1Y = sceneHeight - pill1Height; // Adjust the Y position as needed
+
+        pill1View.setFitWidth(pill1Width);
+        pill1View.setFitHeight(pill1Height);
+        pill1View.setX(-30);
+        pill1View.setY(410);
+
+        gamePane.getChildren().add(pill1View);
 
         return pillars;
     }
